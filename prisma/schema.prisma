@@ -1,0 +1,90 @@
+// Prisma Schema for Smart Water Management System
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  tanks Tank[]
+
+  @@map("users")
+}
+
+model Tank {
+  id             Int      @id @default(autoincrement())
+  userId         Int      @map("user_id")
+  deviceId       String   @unique @map("device_id")
+  name           String
+  capacityLiters Float    @default(1000.0) @map("capacity_liters")
+  tankDepthCm    Float    @default(100.0) @map("tank_depth_cm")
+  lowThreshold   Float    @default(20.0) @map("low_threshold")
+  fullThreshold  Float    @default(90.0) @map("full_threshold")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sensorReadings SensorReading[]
+  pumpEvents     PumpEvent[]
+  alerts         Alert[]
+
+  @@index([deviceId])
+  @@index([userId])
+  @@map("tanks")
+}
+
+model SensorReading {
+  id                Int      @id @default(autoincrement())
+  tankId            Int      @map("tank_id")
+  distanceCm        Float    @map("distance_cm")
+  waterLevelPercent Float    @map("water_level_percent")
+  waterLevelLiters  Float    @map("water_level_liters")
+  pumpStatus        Boolean  @default(false) @map("pump_status")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  tank Tank @relation(fields: [tankId], references: [id], onDelete: Cascade)
+
+  @@index([tankId, createdAt])
+  @@map("sensor_readings")
+}
+
+model PumpEvent {
+  id        Int      @id @default(autoincrement())
+  tankId    Int      @map("tank_id")
+  status    String   // "ON" or "OFF"
+  reason    String   // "LOW_LEVEL", "TANK_FULL", "USER_COMMAND", "EMERGENCY_SHUTDOWN"
+  source    String   // "AUTO", "APP", "MANUAL"
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tank Tank @relation(fields: [tankId], references: [id], onDelete: Cascade)
+
+  @@index([tankId, createdAt])
+  @@map("pump_events")
+}
+
+model Alert {
+  id        Int      @id @default(autoincrement())
+  tankId    Int      @map("tank_id")
+  type      String   // "LOW_LEVEL", "CRITICAL_LOW", "TANK_FULL", "DEVICE_OFFLINE"
+  severity  String   // "INFO", "WARNING", "CRITICAL"
+  message   String
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tank Tank @relation(fields: [tankId], references: [id], onDelete: Cascade)
+
+  @@index([tankId, isRead])
+  @@index([tankId, createdAt])
+  @@map("alerts")
+}
