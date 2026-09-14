@@ -51,20 +51,33 @@ class AlertController {
    */
   async markAllAsRead(req, res, next) {
     try {
-      const tankId = Number(req.body.tankId || req.params.tankId);
+      const tankId = req.body.tankId ? Number(req.body.tankId) : null;
 
-      if (!tankId) {
-        return res.status(400).json({
-          success: false,
-          error: 'tankId is required to mark all alerts as read.',
+      if (tankId) {
+        const result = await alertService.markAllAsRead(tankId);
+        return res.json({
+          success: true,
+          message: 'All alerts marked as read for this tank.',
+          data: result,
         });
       }
 
-      const result = await alertService.markAllAsRead(tankId);
+      // If tankId not specified, mark all unread alerts for the authenticated user
+      const userTanks = await prisma.tank.findMany({
+        where: { userId: req.user.id },
+        select: { id: true },
+      });
+      const tankIds = userTanks.map((t) => t.id);
+
+      const result = await prisma.alert.updateMany({
+        where: { tankId: { in: tankIds }, isRead: false },
+        data: { isRead: true },
+      });
 
       res.json({
         success: true,
-        message: `Marked ${result.count} alerts as read.`,
+        message: 'All alerts marked as read.',
+        data: result,
       });
     } catch (error) {
       next(error);
