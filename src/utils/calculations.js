@@ -46,8 +46,9 @@ function calculateWaterVolumeLiters(levelPercent, capacityLiters) {
  * @param {number} [fullThreshold=90] - Full threshold percentage (default 90%)
  * @returns {{ type: string, severity: string, message: string }} Status object
  */
-function determineWaterLevelStatus(levelPercent, lowThreshold = 20, fullThreshold = 90) {
-  const criticalThreshold = Math.min(10, lowThreshold / 2);
+function determineWaterLevelStatus(levelPercent, lowThreshold = 30, fullThreshold = 90) {
+  const lowThresh = typeof lowThreshold === 'number' ? lowThreshold : 30;
+  const criticalThreshold = Math.min(15, lowThresh / 2);
 
   if (levelPercent <= criticalThreshold) {
     return {
@@ -57,11 +58,11 @@ function determineWaterLevelStatus(levelPercent, lowThreshold = 20, fullThreshol
     };
   }
 
-  if (levelPercent <= lowThreshold) {
+  if (levelPercent <= lowThresh) {
     return {
       type: ALERT_TYPES.LOW_LEVEL,
       severity: ALERT_SEVERITY.WARNING,
-      message: `Water level is low (${levelPercent}%). Refill recommended.`,
+      message: `Water level is low (${levelPercent}% <= ${lowThresh}%). Refill recommended.`,
     };
   }
 

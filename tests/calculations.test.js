@@ -42,14 +42,14 @@ test('Water Level Calculations', async (t) => {
     assert.strictEqual(status.severity, ALERT_SEVERITY.CRITICAL);
   });
 
-  await t.test('evaluates LOW_LEVEL alert when level <= 20%', () => {
-    const status = determineWaterLevelStatus(18, 20, 90);
+  await t.test('evaluates LOW_LEVEL alert when level <= 30%', () => {
+    const status = determineWaterLevelStatus(25, 30, 90);
     assert.strictEqual(status.type, ALERT_TYPES.LOW_LEVEL);
     assert.strictEqual(status.severity, ALERT_SEVERITY.WARNING);
   });
 
-  await t.test('evaluates NORMAL when level is between 20% and 90%', () => {
-    const status = determineWaterLevelStatus(55, 20, 90);
+  await t.test('evaluates NORMAL when level is between 30% and 90%', () => {
+    const status = determineWaterLevelStatus(55, 30, 90);
     assert.strictEqual(status.type, ALERT_TYPES.NORMAL);
   });
 
