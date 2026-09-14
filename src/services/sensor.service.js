@@ -17,7 +17,8 @@ class SensorService {
    * @param {Object} telemetry - Telemetry payload { distance: number, pump?: boolean }
    * @returns {Promise<Object|null>} Saved reading record or null if tank not found
    */
-  async recordReading(deviceId, { distance, pump }) {
+  async recordReading(deviceId, payload = {}) {
+    const { distance } = payload;
     if (distance === undefined || distance === null || isNaN(distance)) {
       console.warn(`⚠️ Invalid distance value received from device: ${deviceId}`);
       return null;
@@ -36,7 +37,15 @@ class SensorService {
     // Step 4 & 5: Calculate level and status
     const distanceNum = parseFloat(distance);
     const metrics = waterLevelService.processDistance(distanceNum, tank);
-    const pumpBool = typeof pump === 'boolean' ? pump : Boolean(pump === 'true' || pump === 1 || pump === 'ON');
+
+    // If ESP8266 sent waterLevel in HiveMQ payload, prioritize it
+    const rawDeviceLevel = payload.waterLevel !== undefined ? payload.waterLevel : payload.waterLevelPercent;
+    if (rawDeviceLevel !== undefined && rawDeviceLevel !== null && !isNaN(rawDeviceLevel)) {
+      metrics.levelPercent = Math.max(0, Math.min(100, Number(parseFloat(rawDeviceLevel).toFixed(2))));
+      metrics.volumeLiters = Number(((metrics.levelPercent / 100) * (tank.capacityLiters || 1000)).toFixed(2));
+    }
+
+    const pumpBool = typeof payload.pump === 'boolean' ? payload.pump : Boolean(payload.pump === 'true' || payload.pump === 1 || payload.pump === 'ON');
 
     // Step 7: Save reading to PostgreSQL
     const reading = await prisma.sensorReading.create({
