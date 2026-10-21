@@ -109,6 +109,15 @@ function emitDeviceStatus(deviceId, status) {
   io.emit(SOCKET_EVENTS.DEVICE_STATUS, { deviceId, ...status });
 }
 
+/**
+ * Broadcast control mode change (AUTO vs MANUAL)
+ */
+function emitModeChange(tankId, mode) {
+  if (!io) return;
+  io.to(`tank:${tankId}`).emit(SOCKET_EVENTS.MODE_CHANGE, { tankId, mode });
+  io.emit(SOCKET_EVENTS.MODE_CHANGE, { tankId, mode });
+}
+
 module.exports = {
   initSocket,
   getIO,
@@ -116,4 +125,5 @@ module.exports = {
   emitAlert,
   emitPumpEvent,
   emitDeviceStatus,
+  emitModeChange,
 };

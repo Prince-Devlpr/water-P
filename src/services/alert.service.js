@@ -18,9 +18,34 @@ class AlertService {
    * @param {number} levelPercent - Current water level percentage
    * @returns {Promise<Object|null>} Created alert or null if unchanged
    */
-  async evaluateAndAlert(tank, levelPercent) {
+  async evaluateAndAlert(tank, levelPercent, tdsPpm = null) {
     const status = determineWaterLevelStatus(levelPercent, tank.lowThreshold, tank.fullThreshold);
     const lastState = this.tankStateMap.get(tank.id);
+
+    // High TDS alert check (> 500 ppm triggers buzzer on ESP)
+    if (tdsPpm !== null && tdsPpm > 500) {
+      const tdsKey = `tds_${tank.id}`;
+      if (this.tankStateMap.get(tdsKey) !== 'HIGH_TDS') {
+        try {
+          const tdsAlert = await prisma.alert.create({
+            data: {
+              tankId: tank.id,
+              type: ALERT_TYPES.HIGH_TDS,
+              severity: ALERT_SEVERITY.WARNING,
+              message: `High TDS Water Quality Alert: ${tdsPpm} ppm exceeds safe threshold (500 ppm).`,
+              isRead: false,
+            },
+          });
+          this.tankStateMap.set(tdsKey, 'HIGH_TDS');
+          emitAlert(tank.id, tdsAlert);
+          return tdsAlert;
+        } catch (e) {
+          console.error(`❌ Failed to record TDS alert for tank #${tank.id}:`, e.message);
+        }
+      }
+    } else if (tdsPpm !== null && tdsPpm <= 500) {
+      this.tankStateMap.set(`tds_${tank.id}`, 'NORMAL_TDS');
+    }
 
     // If level returned to normal
     if (status.type === ALERT_TYPES.NORMAL) {

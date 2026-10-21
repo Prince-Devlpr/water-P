@@ -28,9 +28,10 @@ model Tank {
   deviceId       String   @unique @map("device_id")
   name           String
   capacityLiters Float    @default(1000.0) @map("capacity_liters")
-  tankDepthCm    Float    @default(100.0) @map("tank_depth_cm")
-  lowThreshold   Float    @default(20.0) @map("low_threshold")
+  tankDepthCm    Float    @default(15.0) @map("tank_depth_cm")
+  lowThreshold   Float    @default(30.0) @map("low_threshold")
   fullThreshold  Float    @default(90.0) @map("full_threshold")
+  autoMode       Boolean  @default(true) @map("auto_mode")
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
@@ -50,7 +51,11 @@ model SensorReading {
   distanceCm        Float    @map("distance_cm")
   waterLevelPercent Float    @map("water_level_percent")
   waterLevelLiters  Float    @map("water_level_liters")
+  flowRate          Float    @default(0.0) @map("flow_rate")
+  totalLiters       Float    @default(0.0) @map("total_liters")
+  tdsPpm            Int      @default(220) @map("tds_ppm")
   pumpStatus        Boolean  @default(false) @map("pump_status")
+  mode              String   @default("AUTO") @map("mode")
   createdAt         DateTime @default(now()) @map("created_at")
 
   tank Tank @relation(fields: [tankId], references: [id], onDelete: Cascade)

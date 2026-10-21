@@ -14,7 +14,7 @@ require('dotenv').config({ path: path.join(__dirname, '../.env') });
 const BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883';
 const USERNAME = process.env.MQTT_USERNAME || '';
 const PASSWORD = process.env.MQTT_PASSWORD || '';
-const DEVICE_ID = process.env.SIMULATE_DEVICE_ID || 'ESP8266_001';
+const DEVICE_ID = process.env.SIMULATE_DEVICE_ID || 'ESP32_001';
 
 const isSecure = BROKER_URL.startsWith('mqtts://') || BROKER_URL.startsWith('ssl://');
 
@@ -32,79 +32,83 @@ console.log(`🔌 Connecting ESP8266 simulator to: ${BROKER_URL}`);
 const client = mqtt.connect(BROKER_URL, clientOptions);
 
 // Simulated Hardware State
-let currentDistanceCm = 45.0; // Starts at ~55% full (assuming 100cm depth)
-let pumpRelayState = false;   // false = OFF, true = ON
+let currentDistanceCm = 5.0; // Starts at ~55% full (with 11cm depth)
+let pumpRelayState = false;  // false = OFF, true = ON
+let autoModeState = true;    // true = AUTO, false = MANUAL
+let totalLitersPumped = 15.0;
+let flowRateLMin = 0.0;
 let startTime = Date.now();
 
 const TELEMETRY_TOPIC = `smartwater/${DEVICE_ID}/telemetry`;
 const STATUS_TOPIC = `smartwater/${DEVICE_ID}/status`;
-const COMMAND_TOPIC = `smartwater/${DEVICE_ID}/command/pump`;
+const COMMAND_PUMP_TOPIC = `smartwater/${DEVICE_ID}/command/pump`;
+const COMMAND_MODE_TOPIC = `smartwater/${DEVICE_ID}/command/mode`;
 
 client.on('connect', () => {
   console.log(`
-✅ [ESP8266 Simulator Online]
+✅ [ESP Hardware Simulator Online]
    Device ID:       ${DEVICE_ID}
    Publishing to:   ${TELEMETRY_TOPIC}
-   Subscribed to:   ${COMMAND_TOPIC}
+   Subscribed to:   ${COMMAND_PUMP_TOPIC}, ${COMMAND_MODE_TOPIC}
   `);
 
-  // Subscribe to pump commands from backend/app
-  client.subscribe(COMMAND_TOPIC, { qos: 1 }, (err) => {
+  client.subscribe([COMMAND_PUMP_TOPIC, COMMAND_MODE_TOPIC], { qos: 1 }, (err) => {
     if (err) console.error('Subscription error:', err);
   });
 
-  // Initial Status publish
   publishStatus();
 });
 
 client.on('message', (topic, message) => {
-  if (topic === COMMAND_TOPIC) {
-    try {
-      const data = JSON.parse(message.toString());
-      console.log(`⚡ [ESP8266 Hardware] Received remote pump command: ${JSON.stringify(data)}`);
+  try {
+    const data = JSON.parse(message.toString());
 
-      if (data.state === 'ON') {
-        pumpRelayState = true;
-        console.log('🔌 Relay switched: PUMP ON (Remote Override)');
-      } else if (data.state === 'OFF') {
-        pumpRelayState = false;
-        console.log('🔌 Relay switched: PUMP OFF (Remote Override)');
-      }
-
-      // Immediate telemetry update after command
+    if (topic === COMMAND_PUMP_TOPIC) {
+      console.log(`⚡ [ESP Hardware] Remote pump command: ${JSON.stringify(data)}`);
+      autoModeState = false; // manual override
+      pumpRelayState = data.state === 'ON';
+      flowRateLMin = pumpRelayState ? Number((1.5 + Math.random() * 0.8).toFixed(2)) : 0.0;
       publishTelemetry();
-    } catch (e) {
-      console.error('Failed to parse command payload:', e.message);
+    } else if (topic === COMMAND_MODE_TOPIC) {
+      console.log(`🔄 [ESP Hardware] Mode command: ${JSON.stringify(data)}`);
+      autoModeState = data.mode === 'AUTO';
+      publishTelemetry();
     }
+  } catch (e) {
+    console.error('Failed to parse command payload:', e.message);
   }
 });
 
-// Telemetry loop: every 4 seconds
+// Telemetry loop: every 3 seconds
 setInterval(() => {
   if (!client.connected) return;
 
-  // Simulate water level physics:
-  // If pump is ON -> water level rises (distance decreases)
-  // If pump is OFF -> water is used slowly (distance increases)
+  // Simulate water physics with 11cm depth tank:
+  // Tank Depth: 11cm. Full: ~1.1cm (90%). Low: ~7.7cm (30%).
   if (pumpRelayState) {
-    currentDistanceCm -= 2.5; // filling up
-    if (currentDistanceCm <= 10.0) {
-      // Local automatic hysteresis cutoff (Tank Full ~90%)
-      currentDistanceCm = 10.0;
+    flowRateLMin = Number((1.6 + Math.random() * 0.6).toFixed(2));
+    totalLitersPumped += Number(((flowRateLMin / 60) * 3).toFixed(2));
+    currentDistanceCm -= 0.5; // filling up
+
+    if (autoModeState && currentDistanceCm <= 1.1) {
+      currentDistanceCm = 1.1;
       pumpRelayState = false;
-      console.log('💧 [ESP8266 Local Auto-Failsafe] Water reached FULL threshold (90%). Pump stopped automatically.');
+      flowRateLMin = 0.0;
+      console.log('💧 [ESP Local Auto] Water reached FULL (90%). Pump stopped.');
     }
   } else {
-    currentDistanceCm += 1.0; // consuming water
-    if (currentDistanceCm >= 82.0) {
-      // Local automatic hysteresis start (Tank Low ~18%)
+    flowRateLMin = 0.0;
+    currentDistanceCm += 0.2; // consuming water
+
+    if (autoModeState && currentDistanceCm >= 7.7) {
       pumpRelayState = true;
-      console.log('⚠️ [ESP8266 Local Auto-Failsafe] Water dropped to LOW threshold (18%). Pump started automatically.');
+      flowRateLMin = Number((1.6 + Math.random() * 0.6).toFixed(2));
+      console.log('⚠️ [ESP Local Auto] Water dropped to LOW (30%). Pump started.');
     }
   }
 
   publishTelemetry();
-}, 4000);
+}, 3000);
 
 // Status heartbeat: every 30 seconds
 setInterval(() => {
@@ -114,14 +118,24 @@ setInterval(() => {
 }, 30000);
 
 function publishTelemetry() {
+  const depth = 11.0;
+  const levelPercent = Math.max(0, Math.min(100, ((depth - currentDistanceCm) / depth) * 100));
+  const tdsPPM = Math.floor(200 + Math.random() * 31); // 200-230 ppm
+
   const payload = {
+    deviceId: DEVICE_ID,
     distance: Number(currentDistanceCm.toFixed(1)),
+    waterLevel: Number(levelPercent.toFixed(1)),
+    flowRate: flowRateLMin,
+    totalLiters: Number(totalLitersPumped.toFixed(2)),
+    tds: tdsPPM,
     pump: pumpRelayState,
+    mode: autoModeState ? 'AUTO' : 'MANUAL',
   };
 
   client.publish(TELEMETRY_TOPIC, JSON.stringify(payload), { qos: 1 }, (err) => {
     if (!err) {
-      console.log(`📤 Telemetry published: distance=${payload.distance}cm, pump=${payload.pump ? 'ON' : 'OFF'}`);
+      console.log(`📤 Telemetry: dist=${payload.distance}cm (${payload.waterLevel}%), flow=${payload.flowRate}L/m, total=${payload.totalLiters}L, tds=${payload.tds}ppm, pump=${payload.pump ? 'ON' : 'OFF'}, mode=${payload.mode}`);
     }
   });
 }

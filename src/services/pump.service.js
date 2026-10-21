@@ -45,9 +45,10 @@ class PumpService {
       }
     }
 
-    // Step: Publish MQTT command to ESP8266
-    const commandTopic = MQTT_TOPICS.COMMAND_PUMP(tank.deviceId);
-    const payload = JSON.stringify({ state: targetState });
+    // Step: Publish MQTT command to ESP32 / ESP8266
+    const commandTopic = MQTT_TOPICS.COMMAND(tank.deviceId);
+    const pumpTopic = MQTT_TOPICS.COMMAND_PUMP(tank.deviceId);
+    const payload = JSON.stringify({ command: targetState, state: targetState });
 
     await new Promise((resolve, reject) => {
       mqttClient.publish(commandTopic, payload, { qos: 1 }, (err) => {
@@ -56,6 +57,8 @@ class PumpService {
           return reject(new Error('Failed to dispatch MQTT command to device'));
         }
         console.log(`📤 MQTT Command published to ${commandTopic}: ${payload}`);
+        // Also publish to subtopic for compatibility
+        mqttClient.publish(pumpTopic, payload, { qos: 1 });
         resolve();
       });
     });

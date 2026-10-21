@@ -26,9 +26,13 @@ async function main() {
     console.log(`👤 Demo user already exists: ${user.email}`);
   }
 
-  // 2. Create or find demo tank
-  const deviceId = 'ESP8266_001';
-  let tank = await prisma.tank.findUnique({ where: { deviceId } });
+  // 2. Create or find demo tank (ESP32_001)
+  const deviceId = 'ESP32_001';
+  let tank = await prisma.tank.findFirst({
+    where: {
+      OR: [{ deviceId: 'ESP32_001' }, { deviceId: 'ESP8266_001' }],
+    },
+  });
 
   if (!tank) {
     tank = await prisma.tank.create({
@@ -37,14 +41,26 @@ async function main() {
         deviceId,
         name: 'Home Tank',
         capacityLiters: 1000.0,
-        tankDepthCm: 100.0,
-        lowThreshold: 20.0,
-        fullThreshold: 90.0,
+        tankDepthCm: 11.0,
+        lowThreshold: 50.0,
+        fullThreshold: 70.0,
+        autoMode: true,
       },
     });
     console.log(`🚰 Created demo tank: ${tank.name} (Device: ${tank.deviceId})`);
   } else {
-    console.log(`🚰 Demo tank already exists: ${tank.name}`);
+    // Update existing tank to match hardware settings
+    tank = await prisma.tank.update({
+      where: { id: tank.id },
+      data: {
+        deviceId: 'ESP32_001',
+        tankDepthCm: 11.0,
+        lowThreshold: 50.0,
+        fullThreshold: 70.0,
+        autoMode: true,
+      },
+    });
+    console.log(`🚰 Updated demo tank: ${tank.name} (Device: ESP32_001, Depth: 11cm, Low: 50%, Full: 70%)`);
   }
 
   // 3. Seed historical readings over the past 24 hours
@@ -53,6 +69,7 @@ async function main() {
     console.log('📊 Seeding historical sensor readings for the past 24 hours...');
     const now = Date.now();
     const readingsData = [];
+    let runningTotalLiters = 25.0;
 
     // Simulate 24 hourly readings
     for (let i = 24; i >= 0; i--) {
@@ -60,16 +77,23 @@ async function main() {
       // Generate realistic fluctuating level between 30% and 85%
       const cycle = Math.sin((i / 24) * Math.PI * 2);
       const levelPercent = Number((60 + cycle * 25).toFixed(2));
-      const distanceCm = Number((100 - levelPercent).toFixed(2));
+      const distanceCm = Number((15.0 - (levelPercent / 100) * 15.0).toFixed(2));
       const liters = Number(((levelPercent / 100) * 1000).toFixed(2));
       const pumpStatus = levelPercent < 35;
+      const flowRate = pumpStatus ? Number((1.5 + Math.random() * 1.2).toFixed(2)) : 0.0;
+      if (pumpStatus) runningTotalLiters += flowRate * 5;
+      const tdsPpm = Math.floor(200 + Math.random() * 31); // 200-230 ppm
 
       readingsData.push({
         tankId: tank.id,
         distanceCm,
         waterLevelPercent: levelPercent,
         waterLevelLiters: liters,
+        flowRate,
+        totalLiters: Number(runningTotalLiters.toFixed(2)),
+        tdsPpm,
         pumpStatus,
+        mode: 'AUTO',
         createdAt: timestamp,
       });
     }

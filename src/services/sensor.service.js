@@ -18,8 +18,8 @@ class SensorService {
    * @returns {Promise<Object|null>} Saved reading record or null if tank not found
    */
   async recordReading(deviceId, payload = {}) {
-    const { distance } = payload;
-    if (distance === undefined || distance === null || isNaN(distance)) {
+    const rawDistance = payload.distanceCm !== undefined ? payload.distanceCm : payload.distance;
+    if (rawDistance === undefined || rawDistance === null || isNaN(rawDistance)) {
       console.warn(`⚠️ Invalid distance value received from device: ${deviceId}`);
       return null;
     }
@@ -35,17 +35,36 @@ class SensorService {
     }
 
     // Step 4 & 5: Calculate level and status
-    const distanceNum = parseFloat(distance);
+    const distanceNum = parseFloat(rawDistance);
     const metrics = waterLevelService.processDistance(distanceNum, tank);
 
-    // If ESP8266 sent waterLevel in HiveMQ payload, prioritize it
+    // If device sent waterLevel in HiveMQ payload, prioritize it
     const rawDeviceLevel = payload.waterLevel !== undefined ? payload.waterLevel : payload.waterLevelPercent;
     if (rawDeviceLevel !== undefined && rawDeviceLevel !== null && !isNaN(rawDeviceLevel)) {
       metrics.levelPercent = Math.max(0, Math.min(100, Number(parseFloat(rawDeviceLevel).toFixed(2))));
       metrics.volumeLiters = Number(((metrics.levelPercent / 100) * (tank.capacityLiters || 1000)).toFixed(2));
     }
 
-    const pumpBool = typeof payload.pump === 'boolean' ? payload.pump : Boolean(payload.pump === 'true' || payload.pump === 1 || payload.pump === 'ON');
+    // Check pumpStatus ("ON"/"OFF" or boolean) and pump
+    const pumpBool = payload.pumpStatus !== undefined
+      ? (payload.pumpStatus === 'ON' || payload.pumpStatus === true || payload.pumpStatus === 'true')
+      : (typeof payload.pump === 'boolean' ? payload.pump : Boolean(payload.pump === 'true' || payload.pump === 1 || payload.pump === 'ON'));
+
+    // Extract flow rate, total liters, TDS and mode from ESP reading
+    const rawFlow = payload.flowRateLMin !== undefined ? payload.flowRateLMin : (payload.flowRate !== undefined ? payload.flowRate : payload.flow);
+    const flowRate = rawFlow !== undefined && !isNaN(rawFlow) ? Number(parseFloat(rawFlow).toFixed(2)) : 0.0;
+
+    const rawTotal = payload.totalLiters !== undefined ? payload.totalLiters : payload.total;
+    const totalLiters = rawTotal !== undefined && !isNaN(rawTotal) ? Number(parseFloat(rawTotal).toFixed(2)) : 0.0;
+
+    const rawTds = payload.tdsPPM !== undefined ? payload.tdsPPM : (payload.tdsPpm !== undefined ? payload.tdsPpm : payload.tds);
+    const tdsPpm = rawTds !== undefined && !isNaN(rawTds) ? Math.round(Number(rawTds)) : 220;
+
+    const mode = payload.mode
+      ? String(payload.mode).toUpperCase()
+      : (payload.autoMode !== undefined
+          ? (payload.autoMode === true || payload.autoMode === 'true' ? 'AUTO' : 'MANUAL')
+          : 'AUTO');
 
     // Step 7: Save reading to PostgreSQL
     const reading = await prisma.sensorReading.create({
@@ -54,12 +73,16 @@ class SensorService {
         distanceCm: metrics.distanceCm,
         waterLevelPercent: metrics.levelPercent,
         waterLevelLiters: metrics.volumeLiters,
+        flowRate,
+        totalLiters,
+        tdsPpm,
         pumpStatus: pumpBool,
+        mode,
       },
     });
 
     // Step 8: Evaluate threshold alerts (with state-change deduplication)
-    const alert = await alertService.evaluateAndAlert(tank, metrics.levelPercent);
+    const alert = await alertService.evaluateAndAlert(tank, metrics.levelPercent, tdsPpm);
 
     // Track automatic pump state transitions from the ESP8266 hardware relay
     const lastPumpStatus = this.tankPumpStateMap.get(tank.id);
@@ -89,7 +112,11 @@ class SensorService {
       distanceCm: metrics.distanceCm,
       waterLevelPercent: metrics.levelPercent,
       waterLevelLiters: metrics.volumeLiters,
+      flowRate,
+      totalLiters,
+      tdsPpm,
       pumpStatus: pumpBool,
+      mode,
       status: metrics.status,
       severity: metrics.severity,
       alert: alert ? { id: alert.id, type: alert.type, message: alert.message } : null,
@@ -168,13 +195,18 @@ class SensorService {
         tankDepthCm: tank.tankDepthCm,
         lowThreshold: tank.lowThreshold,
         fullThreshold: tank.fullThreshold,
+        autoMode: tank.autoMode,
       },
       current: latestReading
         ? {
             levelPercent: latestReading.waterLevelPercent,
             volumeLiters: latestReading.waterLevelLiters,
             distanceCm: latestReading.distanceCm,
+            flowRate: latestReading.flowRate,
+            totalLiters: latestReading.totalLiters,
+            tdsPpm: latestReading.tdsPpm,
             pumpStatus: latestReading.pumpStatus,
+            mode: latestReading.mode,
             status,
             severity,
             lastUpdated: latestReading.createdAt,

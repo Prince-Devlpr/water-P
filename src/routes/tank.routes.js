@@ -11,5 +11,6 @@ router.get('/', authenticate, tankController.getTanks);
 router.get('/:id', authenticate, tankController.getTankById);
 router.put('/:id', authenticate, tankController.updateTank);
 router.get('/:id/current', authenticate, tankController.getCurrentStatus);
+router.post('/:id/mode', authenticate, tankController.setControlMode);
 
 module.exports = router;

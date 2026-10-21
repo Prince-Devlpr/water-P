@@ -15,8 +15,13 @@ class MqttService {
     if (this.initialized) return;
 
     mqttClient.on('connect', () => {
-      // Subscribe to all device telemetry and status topics
-      const topics = [MQTT_TOPICS.ALL_TELEMETRY, MQTT_TOPICS.ALL_STATUS];
+      // Subscribe to all device telemetry, status, ack, and alert topics
+      const topics = [
+        MQTT_TOPICS.ALL_TELEMETRY,
+        MQTT_TOPICS.ALL_STATUS,
+        MQTT_TOPICS.ALL_ACK,
+        MQTT_TOPICS.ALL_ALERT,
+      ];
 
       mqttClient.subscribe(topics, { qos: 1 }, (err) => {
         if (err) {
@@ -45,6 +50,8 @@ class MqttService {
    * Routes incoming MQTT messages based on topic structure:
    * smartwater/{deviceId}/telemetry
    * smartwater/{deviceId}/status
+   * smartwater/{deviceId}/ack
+   * smartwater/{deviceId}/alert
    *
    * @param {string} topic
    * @param {Object} payload
@@ -59,12 +66,16 @@ class MqttService {
     const messageType = parts[2];
 
     if (messageType === 'telemetry') {
-      // Payload expected: { distance: number, pump?: boolean }
       await sensorService.recordReading(deviceId, payload);
     } else if (messageType === 'status') {
-      // Payload expected: { online: boolean, wifiSignal?: number, uptime?: number }
       console.log(`📶 Device status update [${deviceId}]:`, payload);
       emitDeviceStatus(deviceId, payload);
+    } else if (messageType === 'ack') {
+      console.log(`✅ Device ACK received [${deviceId}]:`, payload);
+    } else if (messageType === 'alert') {
+      console.log(`🚨 Hardware Alert from [${deviceId}]:`, payload);
+      const { emitAlert } = require('../sockets/socket');
+      emitAlert(deviceId, payload);
     }
   }
 
@@ -75,12 +86,14 @@ class MqttService {
    * @param {'ON'|'OFF'} state
    */
   publishPumpCommand(deviceId, state) {
-    const topic = MQTT_TOPICS.COMMAND_PUMP(deviceId);
-    const payload = JSON.stringify({ state });
+    const topic = MQTT_TOPICS.COMMAND(deviceId);
+    const subTopic = MQTT_TOPICS.COMMAND_PUMP(deviceId);
+    const payload = JSON.stringify({ command: state, state });
 
     return new Promise((resolve, reject) => {
       mqttClient.publish(topic, payload, { qos: 1 }, (err) => {
         if (err) return reject(err);
+        mqttClient.publish(subTopic, payload, { qos: 1 });
         resolve();
       });
     });

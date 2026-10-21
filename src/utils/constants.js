@@ -6,6 +6,7 @@ const ALERT_TYPES = {
   CRITICAL_LOW: 'CRITICAL_LOW',
   LOW_LEVEL: 'LOW_LEVEL',
   TANK_FULL: 'TANK_FULL',
+  HIGH_TDS: 'HIGH_TDS',
   DEVICE_OFFLINE: 'DEVICE_OFFLINE',
   NORMAL: 'NORMAL',
 };
@@ -38,9 +39,15 @@ const MQTT_TOPICS = {
   BASE_PREFIX: 'smartwater',
   TELEMETRY: (deviceId) => `smartwater/${deviceId}/telemetry`,
   STATUS: (deviceId) => `smartwater/${deviceId}/status`,
+  COMMAND: (deviceId) => `smartwater/${deviceId}/command`,
+  ACK: (deviceId) => `smartwater/${deviceId}/ack`,
+  ALERT: (deviceId) => `smartwater/${deviceId}/alert`,
   COMMAND_PUMP: (deviceId) => `smartwater/${deviceId}/command/pump`,
+  COMMAND_MODE: (deviceId) => `smartwater/${deviceId}/command/mode`,
   ALL_TELEMETRY: 'smartwater/+/telemetry',
   ALL_STATUS: 'smartwater/+/status',
+  ALL_ACK: 'smartwater/+/ack',
+  ALL_ALERT: 'smartwater/+/alert',
 };
 
 const SOCKET_EVENTS = {
@@ -52,6 +59,7 @@ const SOCKET_EVENTS = {
   ALERT: 'tank:alert',
   PUMP_EVENT: 'tank:pump_event',
   DEVICE_STATUS: 'tank:device_status',
+  MODE_CHANGE: 'tank:mode_change',
 };
 
 module.exports = {

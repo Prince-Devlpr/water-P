@@ -58,6 +58,7 @@ app.get('/health', async (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/tanks', tankRoutes);
 app.use('/api/tanks', sensorRoutes);
+app.use('/api', sensorRoutes);
 app.use('/api/tanks', pumpRoutes);
 app.use('/api', alertRoutes);
 app.use('/api/tanks', analyticsRoutes);
