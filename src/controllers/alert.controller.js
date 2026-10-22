@@ -1,4 +1,5 @@
 const alertService = require('../services/alert.service');
+const { prisma } = require('../config/database');
 
 class AlertController {
   /**
