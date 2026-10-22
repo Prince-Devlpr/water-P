@@ -72,6 +72,37 @@ class MqttService {
       emitDeviceStatus(deviceId, payload);
     } else if (messageType === 'ack') {
       console.log(`✅ Device ACK received [${deviceId}]:`, payload);
+      const { emitDeviceAck, emitPumpEvent, emitModeChange } = require('../sockets/socket');
+      emitDeviceAck(deviceId, payload);
+
+      // Confirm device state in DB if tank registered
+      try {
+        const { prisma } = require('../config/database');
+        const tank = await prisma.tank.findUnique({ where: { deviceId } });
+        if (tank) {
+          if (typeof payload.autoMode === 'boolean') {
+            await prisma.tank.update({
+              where: { id: tank.id },
+              data: { autoMode: payload.autoMode },
+            });
+            emitModeChange(tank.id, payload.autoMode ? 'AUTO' : 'MANUAL');
+          }
+          if (typeof payload.pumpOn === 'boolean') {
+            const status = payload.pumpOn ? 'ON' : 'OFF';
+            const event = await prisma.pumpEvent.create({
+              data: {
+                tankId: tank.id,
+                status,
+                reason: 'HARDWARE_ACK',
+                source: 'DEVICE',
+              },
+            });
+            emitPumpEvent(tank.id, event);
+          }
+        }
+      } catch (err) {
+        console.warn('ACK DB sync note:', err.message);
+      }
     } else if (messageType === 'alert') {
       console.log(`🚨 Hardware Alert from [${deviceId}]:`, payload);
       const { emitAlert } = require('../sockets/socket');

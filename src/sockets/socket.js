@@ -118,6 +118,15 @@ function emitModeChange(tankId, mode) {
   io.emit(SOCKET_EVENTS.MODE_CHANGE, { tankId, mode });
 }
 
+/**
+ * Broadcast hardware command acknowledgement from ESP32
+ */
+function emitDeviceAck(deviceId, ack) {
+  if (!io) return;
+  io.emit('tank:ack', { deviceId, ...ack });
+  io.emit('device:ack', { deviceId, ...ack });
+}
+
 module.exports = {
   initSocket,
   getIO,
@@ -126,4 +135,5 @@ module.exports = {
   emitPumpEvent,
   emitDeviceStatus,
   emitModeChange,
+  emitDeviceAck,
 };

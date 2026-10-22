@@ -41,6 +41,32 @@ async function authenticate(req, res, next) {
   }
 }
 
+/**
+ * Optional Authentication Middleware:
+ * If Authorization header is provided, verifies JWT and attaches user.
+ * If not provided, continues without error.
+ */
+async function optionalAuth(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      const decoded = jwt.verify(token, env.JWT_SECRET);
+      const user = await prisma.user.findUnique({
+        where: { id: decoded.id },
+        select: { id: true, name: true, email: true, createdAt: true },
+      });
+      if (user) {
+        req.user = user;
+      }
+    }
+  } catch (error) {
+    // Proceed without authenticated user
+  }
+  next();
+}
+
 module.exports = {
   authenticate,
+  optionalAuth,
 };

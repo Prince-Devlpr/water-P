@@ -60,6 +60,8 @@ const SOCKET_EVENTS = {
   PUMP_EVENT: 'tank:pump_event',
   DEVICE_STATUS: 'tank:device_status',
   MODE_CHANGE: 'tank:mode_change',
+  ACK: 'tank:ack',
+  DEVICE_ACK: 'device:ack',
 };
 
 module.exports = {

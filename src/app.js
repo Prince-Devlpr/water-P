@@ -13,6 +13,7 @@ const sensorRoutes = require('./routes/sensor.routes');
 const pumpRoutes = require('./routes/pump.routes');
 const alertRoutes = require('./routes/alert.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const deviceRoutes = require('./routes/device.routes');
 
 const { errorHandler, notFoundHandler } = require('./middleware/error.middleware');
 
@@ -62,6 +63,8 @@ app.use('/api', sensorRoutes);
 app.use('/api/tanks', pumpRoutes);
 app.use('/api', alertRoutes);
 app.use('/api/tanks', analyticsRoutes);
+app.use('/api/device', deviceRoutes);
+app.use('/api', deviceRoutes);
 
 // Fallback Handlers
 app.use(notFoundHandler);

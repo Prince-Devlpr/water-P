@@ -35,6 +35,17 @@ test('Server & Health Route', async (t) => {
     assert.strictEqual(data.success, false);
   });
 
+  await t.test('POST /api/device/command rejects invalid command with 400', async () => {
+    const res = await fetch(`http://127.0.0.1:${port}/api/device/command`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: 'INVALID_COMMAND' }),
+    });
+    assert.strictEqual(res.status, 400);
+    const data = await res.json();
+    assert.strictEqual(data.error, 'Invalid command');
+  });
+
   // Cleanup server, mqtt, and prisma connections
   if (server) {
     await new Promise((resolve) => server.close(resolve));
