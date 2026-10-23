@@ -17,7 +17,7 @@ router.post('/command', optionalAuth, (req, res) => {
   const command = String(req.body.command || '').toUpperCase();
   const deviceId = req.body.deviceId || 'ESP32_001';
 
-  if (!['ON', 'OFF', 'AUTO', 'MANUAL'].includes(command)) {
+  if (!['ON', 'OFF', 'AUTO', 'MANUAL', 'CONFIG', 'PING'].includes(command)) {
     return res.status(400).json({ error: 'Invalid command' });
   }
 
@@ -30,6 +30,10 @@ router.post('/command', optionalAuth, (req, res) => {
     command,
     state: command,
     mode: command,
+    ...(req.body.tankDepthCm !== undefined && { tankDepthCm: Number(req.body.tankDepthCm) }),
+    ...(req.body.lowThreshold !== undefined && { lowThreshold: Number(req.body.lowThreshold) }),
+    ...(req.body.fullThreshold !== undefined && { fullThreshold: Number(req.body.fullThreshold) }),
+    ...(req.body.autoMode !== undefined && { autoMode: Boolean(req.body.autoMode) }),
   });
 
   mqttClient.publish(topic, payload, { qos: 1 }, async (err) => {

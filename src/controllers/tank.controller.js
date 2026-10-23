@@ -174,6 +174,25 @@ class TankController {
         },
       });
 
+      // Synchronize calibration dynamically with ESP32 via HiveMQ
+      try {
+        const { mqttClient } = require('../config/mqtt');
+        if (mqttClient && mqttClient.connected) {
+          const topic = `smartwater/${updated.deviceId}/command`;
+          const payload = JSON.stringify({
+            command: 'CONFIG',
+            tankDepthCm: updated.tankDepthCm,
+            lowThreshold: updated.lowThreshold,
+            fullThreshold: updated.fullThreshold,
+            autoMode: updated.autoMode,
+          });
+          mqttClient.publish(topic, payload, { qos: 1 });
+          console.log(`📤 Dispatched calibration config to ${topic}:`, payload);
+        }
+      } catch (mqttErr) {
+        console.warn('MQTT config broadcast note:', mqttErr.message);
+      }
+
       res.json({
         success: true,
         data: {

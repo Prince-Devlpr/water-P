@@ -34,10 +34,10 @@ char alertTopic[80]; // <-- Added: Hardware alert notification topic
 #define LCD_ADDRESS 0x27
 LiquidCrystal_I2C lcd(LCD_ADDRESS, 16, 2);
 
-// ========== TANK SETTINGS ==========
-const float TANK_DEPTH_CM = 11.0;
-const float LOW_LEVEL = 50.0;
-const float FULL_LEVEL = 70.0;
+// ========== TANK SETTINGS (DYNAMICALLY CALIBRATED) ==========
+float TANK_DEPTH_CM = 11.0;
+float LOW_LEVEL = 50.0;
+float FULL_LEVEL = 70.0;
 const bool RELAY_ACTIVE_LOW = true;
 
 // ========== FLOW SENSOR ==========
@@ -277,6 +277,28 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   } else if (message.indexOf("\"command\":\"MANUAL\"") >= 0 || message.indexOf("\"mode\":\"MANUAL\"") >= 0) {
     autoMode = false;
     setPump(false, "🔄 MQTT manual mode selected");
+  } else if (message.indexOf("\"command\":\"CONFIG\"") >= 0 || message.indexOf("tankDepthCm") >= 0) {
+    int depthIdx = message.indexOf("\"tankDepthCm\":");
+    if (depthIdx >= 0) {
+      TANK_DEPTH_CM = message.substring(depthIdx + 14).toFloat();
+      Serial.printf("📏 Calibration updated: Tank Depth = %.1f cm\n", TANK_DEPTH_CM);
+    }
+    int lowIdx = message.indexOf("\"lowThreshold\":");
+    if (lowIdx >= 0) {
+      LOW_LEVEL = message.substring(lowIdx + 15).toFloat();
+      Serial.printf("📉 Threshold updated: Low Level = %.1f%%\n", LOW_LEVEL);
+    }
+    int highIdx = message.indexOf("\"fullThreshold\":");
+    if (highIdx >= 0) {
+      FULL_LEVEL = message.substring(highIdx + 16).toFloat();
+      Serial.printf("📈 Threshold updated: Full Level = %.1f%%\n", FULL_LEVEL);
+    }
+    if (message.indexOf("\"autoMode\":true") >= 0) {
+      autoMode = true;
+    } else if (message.indexOf("\"autoMode\":false") >= 0) {
+      autoMode = false;
+    }
+    Serial.println("⚙️ Dynamic calibration parameters updated from App via MQTT!");
   }
 
   if (mqtt.connected()) {
