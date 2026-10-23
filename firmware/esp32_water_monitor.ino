@@ -40,9 +40,14 @@ float LOW_LEVEL = 50.0;
 float FULL_LEVEL = 70.0;
 const bool RELAY_ACTIVE_LOW = true;
 
-// ========== FLOW SENSOR ==========
-const float PULSES_PER_LITER = 450.0;
+// ========== FLOW SENSOR (YF-S402 / YS402) ==========
+// Datasheet formula for YF-S402: Frequency f (Hz) = 73 * Q (L/min)
+// Pulses per Liter = 73 * 60 = 4380 pulses/Liter
+// (Previous 450.0 was for YF-S201, which made YF-S402 readings ~10x too high: 16.3 L/m became 163 L/m)
+float FLOW_CALIBRATION_F = 73.0;
+float PULSES_PER_LITER = 4380.0;
 volatile unsigned long flowPulses = 0;
+volatile unsigned long lastPulseMicros = 0;
 unsigned long lastFlowMillis = 0;
 float flowRateLMin = 0;
 float totalLiters = 0;
@@ -74,9 +79,14 @@ PubSubClient mqtt(secureClient);
 void publishTelemetry();
 void publishAlert(const char* type, const char* message);
 
-// ========== FLOW INTERRUPT ==========
+// ========== FLOW INTERRUPT (WITH NOISE / EMI DEBOUNCE FILTER) ==========
 void IRAM_ATTR countFlowPulse() {
-  flowPulses++;
+  unsigned long now = micros();
+  // Filter out electrical noise glitches (< 500 microseconds = max ~27 L/min for YF-S402)
+  if (now - lastPulseMicros >= 500) {
+    flowPulses++;
+    lastPulseMicros = now;
+  }
 }
 
 // ========== PUMP ==========
@@ -173,11 +183,19 @@ void updateFlow() {
     float elapsed = (now - lastFlowMillis) / 1000.0;
     lastFlowMillis = now;
 
+    // YF-S402: Flow rate (L/min) = (pulses / elapsed) / 73.0
+    // Liters = pulses / 4380.0
     float liters = pulses / PULSES_PER_LITER;
 
     flowRateLMin = elapsed > 0
         ? liters * 60.0 / elapsed
         : 0.0;
+
+    // Plausibility safety cap: YF-S402 cannot physically exceed ~15-20 L/min in a 1/4" pipe
+    if (flowRateLMin > 25.0) {
+      Serial.printf("⚠️ Flow rate spike detected (%.1f L/min) - clamping to 20.0 L/min\n", flowRateLMin);
+      flowRateLMin = 20.0;
+    }
 
     totalLiters += liters;
   }
@@ -292,6 +310,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (highIdx >= 0) {
       FULL_LEVEL = message.substring(highIdx + 16).toFloat();
       Serial.printf("📈 Threshold updated: Full Level = %.1f%%\n", FULL_LEVEL);
+    }
+    int flowCalIdx = message.indexOf("\"flowCalibration\":");
+    if (flowCalIdx >= 0) {
+      FLOW_CALIBRATION_F = message.substring(flowCalIdx + 18).toFloat();
+      PULSES_PER_LITER = FLOW_CALIBRATION_F * 60.0;
+      Serial.printf("💧 Flow calibration updated: F = %.1f Hz/(L/min), Pulses/L = %.1f\n", FLOW_CALIBRATION_F, PULSES_PER_LITER);
     }
     if (message.indexOf("\"autoMode\":true") >= 0) {
       autoMode = true;
